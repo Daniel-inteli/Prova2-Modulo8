@@ -11,13 +11,21 @@ app.use(bodyParser.json());
 const db = new sqlite3.Database(':memory:');
 
 db.serialize(() => {
-  db.run("CREATE TABLE cats (id INT, name TEXT, votes INT)");
-  db.run("CREATE TABLE dogs (id INT, name TEXT, votes INT)");
+  db.run(
+    "CREATE TABLE cats (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, votes INT)"
+  );
+  db.run(
+    "CREATE TABLE dogs (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, votes INT)"
+  );
 });
 
 app.post('/cats', (req, res) => {
   const name = req.body.name;
-  db.run(`INSERT INTO cats (name, votes) VALUES ('${name}', 0)`, function(err) {
+  //validando se name existe
+  if (!name) {
+    return res.status(400).json({error: "Campo nome é obrigatório"})
+  }
+  db.run("INSERT INTO cats (name, votes) VALUES (?, 0)", [name],function(err) {
     if (err) {
       res.status(500).send("Erro ao inserir no banco de dados");
     } else {
@@ -27,13 +35,36 @@ app.post('/cats', (req, res) => {
 });
 
 app.post('/dogs', (req, res) => {
+  const name = req.body.name;
+  //validando se name existe
+  if (!name) {
+    return res.status(400).json({ error: "Campo nome é obrigatório" });
+  }
+  db.run("INSERT INTO dogs (name, votes) VALUES (?,0)", [name], function (err) {
+    if(err) {
+      res.status(500).send("Erro ao inserir no banco de dados");
+    } else {
+      res.status(201).json({ id: this.lastID, name, votes: 0 });
+    }
+  })
   
 });
 
 app.post('/vote/:animalType/:id', (req, res) => {
- 
-  db.run(`UPDATE ${animalType} SET votes = votes + 1 WHERE id = ${id}`);
-  res.status(200).send("Voto computado");
+  const { animalType, id } = req.params;
+
+  const table = animalType === 'cats' ? 'cats' : 'dogs';
+  
+  db.get(`SELECT * FROM ${table} WHERE id = ?`, [id], (err, row) => {
+    if (err) {
+      return res.status(500).send("Erro ao consultar o banco de dados");
+    }
+    if (!row) {
+      return res.status(400).send("Id não encontrado no banco de dados")
+    }
+    db.run(`UPDATE ${animalType} SET votes = votes + 1 WHERE id = ${id}`);
+    res.status(200).send("Voto computado");
+  });
 });
 
 app.get('/cats', (req, res) => {
@@ -47,7 +78,13 @@ app.get('/cats', (req, res) => {
 });
 
 app.get('/dogs', (req, res) => {
-  
+  db.all("SELECT * FROM dogs", [], (err, rows) => {
+    if (err) {
+      res.status(500).send("Erro ao consultar o banco de dados");
+    } else {
+      res.json(rows);
+    }
+  });
 });
 
 app.use((err, req, res, next) => {
